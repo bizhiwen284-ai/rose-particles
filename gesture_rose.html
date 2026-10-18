@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#100611">
+<title>ROSÉ — 手势粒子玫瑰</title>
+<style>
+  :root{--pink:#ff75b8;--gold:#f5d79b;--ink:#100611}
+  *{box-sizing:border-box}
+  html,body{margin:0;width:100%;height:100%;overflow:hidden;background:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#fff;touch-action:none}
+  body:before{content:"";position:fixed;inset:0;pointer-events:none;z-index:1;background:radial-gradient(ellipse at 50% 42%,#5b173c44 0%,#1d0a2344 35%,#09050d 78%);mix-blend-mode:screen}
+  #stage{position:fixed;inset:0}
+  canvas{display:block;width:100%;height:100%}
+  .top{position:fixed;z-index:4;top:calc(env(safe-area-inset-top) + 18px);left:0;right:0;text-align:center;pointer-events:none}
+  .eyebrow{font-size:9px;letter-spacing:.55em;color:#f4d9b0;text-transform:uppercase;opacity:.9}
+  h1{font-family:Georgia,"Times New Roman",serif;font-size:clamp(25px,7vw,42px);font-weight:400;letter-spacing:.18em;margin:8px 0 4px;text-shadow:0 0 28px #ff72b8a0}
+  .sub{font-size:9px;letter-spacing:.25em;color:#e8bfd3;opacity:.8}
+  .panel{position:fixed;z-index:5;left:50%;bottom:calc(env(safe-area-inset-bottom) + 22px);transform:translateX(-50%);width:min(92vw,390px);text-align:center}
+  .state{display:inline-flex;align-items:center;gap:8px;padding:9px 15px;border:1px solid #f4cde055;border-radius:99px;background:#180a1ac9;backdrop-filter:blur(18px);font-size:11px;letter-spacing:.16em;color:#ffe4f1;box-shadow:0 0 25px #f65ba31c}
+  .dot{width:5px;height:5px;border-radius:50%;background:#ff80bd;box-shadow:0 0 10px #ff80bd}
+  .hint{font-size:11px;line-height:1.7;color:#d6b8cc;margin:12px 0 14px;letter-spacing:.04em}
+  .actions{display:flex;justify-content:center;gap:8px;flex-wrap:wrap}
+  button{appearance:none;border:1px solid #f6c6df55;background:linear-gradient(135deg,#ff8bc42b,#e9bb7c15);color:#ffeaf4;border-radius:999px;padding:10px 13px;font-size:10px;letter-spacing:.1em;backdrop-filter:blur(12px)}
+  button:active{transform:scale(.97);background:#ff8bc44a}
+  #start{background:linear-gradient(120deg,#f58ab9,#c79b69);color:#240b1b;border:0;font-weight:600;padding:11px 18px}
+  #camera{position:fixed;width:1px;height:1px;opacity:0;pointer-events:none}
+  #camPreview{position:fixed;right:12px;top:calc(env(safe-area-inset-top) + 12px);width:64px;height:86px;object-fit:cover;border-radius:10px;opacity:0;transform:scaleX(-1);border:1px solid #ffb9dc66;z-index:6}
+  .statusline{font-size:9px;letter-spacing:.12em;color:#d6b6cb;margin-top:10px;opacity:.7}
+  .corner{position:fixed;z-index:3;bottom:calc(env(safe-area-inset-bottom) + 14px);font-size:8px;letter-spacing:.2em;color:#b98ba9;opacity:.7}
+  .left{left:14px}.right{right:14px}
+  #flash{position:fixed;inset:0;z-index:8;pointer-events:none;background:#fff1f8;opacity:0}
+  .note{position:fixed;z-index:5;top:50%;left:50%;transform:translate(-50%,-50%);width:80%;max-width:320px;text-align:center;font:italic 14px Georgia,serif;letter-spacing:.08em;color:#ffe3f0;opacity:0;pointer-events:none;text-shadow:0 0 20px #ff72b8}
+  @media(max-height:650px){.top{top:10px}h1{font-size:24px;margin:4px}.panel{bottom:10px}.hint{margin:6px 0 8px}.actions button{padding:8px 11px}}
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<div class="top"><div class="eyebrow">A gesture-driven experience</div><h1>ROSÉ</h1><div class="sub">THE BLOOM OF LIGHT · 3D PARTICLES</div></div>
+<video id="camera" autoplay playsinline muted></video><video id="camPreview" autoplay playsinline muted></video>
+<div class="panel">
+  <div class="state"><span class="dot"></span><span id="stateText">玫瑰 · 合拢态</span></div>
+  <div class="hint" id="hint">握拳，让万千光粒凝成玫瑰<br>张开五指，释放一场粉金色星尘</div>
+  <div class="actions">
+    <button id="start">开启手势识别</button>
+    <button id="closeBtn">握拳 · 聚合</button>
+    <button id="scatterBtn">张掌 · 散开</button>
+    <button id="photoBtn">抓取 · 照片</button>
+  </div>
+  <div class="statusline" id="status">建议使用 Safari / Chrome，并允许摄像头权限</div>
+</div>
+<div class="corner left">PINK GOLD / 01</div><div class="corner right">TOUCH TO EXPLORE</div>
+<div id="flash"></div><div class="note" id="note">A MOMENT, HELD IN LIGHT</div>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const stage=document.querySelector('#stage'), video=document.querySelector('#camera'), preview=document.querySelector('#camPreview');
+const stateText=document.querySelector('#stateText'), hint=document.querySelector('#hint'), status=document.querySelector('#status');
+const startBtn=document.querySelector('#start'), flash=document.querySelector('#flash'), note=document.querySelector('#note');
+let scene,camera,renderer,particles,particleMat,positions,closedPositions,scatterPositions,velocities,colors,seeded=[];
+let state='closed', targetState='closed', handOn=false, lastGesture='', lastGestureAt=0, lastHand=null, photoUntil=0, pinchWas=false, hands=null, cameraStream=null;
+const COUNT=19000, TAU=Math.PI*2;
+function rand(){return Math.random()}
+function gaussian(){return (rand()+rand()+rand()+rand()-2)*1.25}
+function makeScene(){
+ scene=new THREE.Scene(); scene.fog=new THREE.FogExp2(0x100611,.055);
+ camera=new THREE.PerspectiveCamera(48,innerWidth/innerHeight,.1,100);camera.position.set(0,0,9.6);
+ renderer=new THREE.WebGLRenderer({antialias:true,alpha:true,powerPreference:'high-performance'});
+ renderer.setPixelRatio(Math.min(devicePixelRatio,1.7));renderer.setSize(innerWidth,innerHeight);renderer.setClearColor(0x000000,0);stage.appendChild(renderer.domElement);
+ scene.add(new THREE.AmbientLight(0xffffff,1.5));
+ const p1=new THREE.PointLight(0xff5ba9,3,18);p1.position.set(-3,3,4);scene.add(p1);
+ const p2=new THREE.PointLight(0xf5d79b,2.4,15);p2.position.set(3,-1,3);scene.add(p2);
+ const p3=new THREE.PointLight(0x9f69ff,1.2,12);p3.position.set(0,-4,-2);scene.add(p3);
+ const group=new THREE.Group();scene.add(group);
+ closedPositions=new Float32Array(COUNT*3);scatterPositions=new Float32Array(COUNT*3);positions=new Float32Array(COUNT*3);colors=new Float32Array(COUNT*3);velocities=new Float32Array(COUNT*3);
+ // Layered rose petals: parametric rose surface, with a soft spiral curl and layered petal folds.
+ const palette=[new THREE.Color('#ff4f9a'),new THREE.Color('#ff9bc9'),new THREE.Color('#f8d7a0'),new THREE.Color('#d34e9b'),new THREE.Color('#fff0f6')];
+ for(let i=0;i<COUNT;i++){
+   const layer=i%5, u=rand()*TAU, r=Math.sqrt(rand());
+   let x,y,z;
+   if(i<COUNT*.78){
+     const petal=Math.floor(rand()*8), a=u+petal*TAU/8;
+     const rad=.35+1.72*r;
+     const fold=Math.sin(a*2.0+layer*.8)*.18;
+     x=Math.cos(a)*rad*(.72+.28*Math.sin(a*4+layer));
+     y=Math.sin(a)*rad*1.08 + .17*Math.sin(a*3+layer);
+     z=.48*Math.sin(a*2+layer*.9)+.38*Math.cos(r*3.2)+fold;
+     // Cup inward at the center, outer petals flare.
+     const cup=(1-r)*.9; x*=1-cup*.35; y*=1-cup*.35; z+=cup*.6;
+   }else{
+     const t=rand()*TAU, rad=.08+rand()*.45;
+     x=Math.cos(t)*rad;y=Math.sin(t)*rad;z=.35+rand()*.65;
+   }
+   closedPositions[i*3]=x;closedPositions[i*3+1]=y+.05;closedPositions[i*3+2]=z;
+   scatterPositions[i*3]=gaussian()*3.0;scatterPositions[i*3+1]=gaussian()*2.7;scatterPositions[i*3+2]=gaussian()*2.8;
+   positions[i*3]=closedPositions[i*3];positions[i*3+1]=closedPositions[i*3+1];positions[i*3+2]=closedPositions[i*3+2];
+   const c=palette[Math.floor(rand()*palette.length)]; const glow=.65+rand()*.6;
+   colors[i*3]=c.r*glow;colors[i*3+1]=c.g*glow;colors[i*3+2]=c.b*glow;
+   velocities[i*3]=velocities[i*3+1]=velocities[i*3+2]=0;
+ }
+ const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.BufferAttribute(positions,3));geo.setAttribute('color',new THREE.BufferAttribute(colors,3));
+ particleMat=new THREE.PointsMaterial({size:.035,vertexColors:true,transparent:true,opacity:.95,depthWrite:false,blending:THREE.AdditiveBlending,sizeAttenuation:true});
+ particles=new THREE.Points(geo,particleMat);group.add(particles);
+ // Rose core / golden filament.
+ const coreGeo=new THREE.BufferGeometry(), corePts=[];
+ for(let i=0;i<1000;i++){const t=i/1000*TAU*8,r=.015+i/1000*.48;corePts.push(Math.cos(t)*r,Math.sin(t)*r,.55+Math.sin(t*1.5)*.08)}
+ coreGeo.setAttribute('position',new THREE.Float32BufferAttribute(corePts,3));
+ const core=new THREE.Points(coreGeo,new THREE.PointsMaterial({color:0xffd9a0,size:.025,transparent:true,opacity:.95,blending:THREE.AdditiveBlending,depthWrite:false}));group.add(core);
+ // A fine halo of drifting stars.
+ const starGeo=new THREE.BufferGeometry(), starPos=[];
+ for(let i=0;i<1200;i++)starPos.push((rand()-.5)*13,(rand()-.5)*10,(rand()-.5)*8-1);
+ starGeo.setAttribute('position',new THREE.Float32BufferAttribute(starPos,3));
+ const stars=new THREE.Points(starGeo,new THREE.PointsMaterial({color:0xffb5d8,size:.018,transparent:true,opacity:.55,blending:THREE.AdditiveBlending,depthWrite:false}));scene.add(stars);
+ // Floating portrait cards use elegant procedural artwork, no external images needed.
+ const cards=new THREE.Group();scene.add(cards);window.__cards=cards;
+ for(let j=0;j<3;j++){
+   const cv=document.createElement('canvas');cv.width=360;cv.height=480;const ctx=cv.getContext('2d');
+   const grad=ctx.createLinearGradient(0,0,360,480);grad.addColorStop(0,['#42102f','#32133c','#35142e'][j]);grad.addColorStop(1,['#f58db6','#c98b74','#7f4e9b'][j]);ctx.fillStyle=grad;ctx.fillRect(0,0,360,480);
+   for(let k=0;k<90;k++){ctx.fillStyle=`rgba(255,${140+Math.floor(rand()*100)},${180+Math.floor(rand()*70)},${rand()*.5})`;ctx.beginPath();ctx.arc(rand()*360,rand()*480,rand()*3,0,TAU);ctx.fill()}
+   ctx.save();ctx.translate(180,215);ctx.strokeStyle=['#ffd5e6','#f8d6a0','#ffacd0'][j];ctx.lineWidth=2;
+   for(let p=0;p<8;p++){ctx.rotate(TAU/8);ctx.beginPath();ctx.ellipse(0,-48,27,70,0,0,TAU);ctx.stroke()}
+   ctx.restore();ctx.fillStyle='#fff0f7';ctx.font='italic 26px Georgia';ctx.textAlign='center';ctx.fillText(['Rose No. 01','Golden Hour','Soft Memories'][j],180,410);
+   ctx.fillStyle='#f8d6a0';ctx.font='10px sans-serif';ctx.letterSpacing='4px';ctx.fillText('A MOMENT IN BLOOM',180,440);
+   const tex=new THREE.CanvasTexture(cv);const mat=new THREE.MeshBasicMaterial({map:tex,transparent:true,opacity:.0,side:THREE.DoubleSide});
+   const mesh=new THREE.Mesh(new THREE.PlaneGeometry(1.08,1.44),mat);mesh.position.set((j-1)*2.1,-.1,-.7);mesh.rotation.y=(j-1)*-.14;mesh.userData.baseX=mesh.position.x;mesh.userData.idx=j;cards.add(mesh);
+   const edge=new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry),new THREE.LineBasicMaterial({color:0xf8d6a0,transparent:true,opacity:.0}));mesh.add(edge);mesh.userData.edge=edge;
+ }
+ window.__group=group;window.__stars=stars;window.__core=core;
+}
+function setState(next,source='touch'){
+ if(next===state && next!=='photo')return;
+ state=next;targetState=next;
+ const labels={closed:'玫瑰 · 合拢态',scatter:'星尘 · 散开态',photo:'记忆 · 照片放大态'};
+ stateText.textContent=labels[next]||labels.closed;
+ const hints={closed:'握拳，让万千光粒凝成玫瑰<br>张开五指，释放一场粉金色星尘',scatter:'移动手掌旋转星尘空间<br>捏合拇指与食指，抓取一张光之照片',photo:'你抓住了一帧光影<br>张开手掌回到星尘，握拳让玫瑰再次绽放'};
+ hint.innerHTML=hints[next];
+ document.querySelector('#closeBtn').style.opacity=next==='closed'?'.5':'1';
+ document.querySelector('#scatterBtn').style.opacity=next==='scatter'?'.5':'1';
+ if(next==='photo'){photoUntil=performance.now()+2200;flash.animate([{opacity:.0},{opacity:.35},{opacity:0}],{duration:650});note.animate([{opacity:0,transform:'translate(-50%,-50%) scale(.9)'},{opacity:1,transform:'translate(-50%,-50%) scale(1)'},{opacity:0,offset:1}],{duration:1800});}
+}
+document.querySelector('#closeBtn').onclick=()=>setState('closed');
+document.querySelector('#scatterBtn').onclick=()=>setState('scatter');
+document.querySelector('#photoBtn').onclick=()=>setState('photo');
+let prevTime=0;
+function animate(t){
+ requestAnimationFrame(animate);const dt=Math.min((t-prevTime)/1000||.016,.04);prevTime=t;
+ const group=window.__group;
+ if(group){
+   const spread=state==='scatter'?1:state==='photo'?.35:0;
+   for(let i=0;i<COUNT;i++){
+     const k=i*3;
+     const targetX=state==='scatter'?scatterPositions[k]:closedPositions[k];
+     const targetY=state==='scatter'?scatterPositions[k+1]:closedPositions[k+1];
+     const targetZ=state==='scatter'?scatterPositions[k+2]:closedPositions[k+2];
+     const spring=state==='scatter'?.035:.065;
+     positions[k]+=(targetX-positions[k])*spring;positions[k+1]+=(targetY-positions[k+1])*spring;positions[k+2]+=(targetZ-positions[k+2])*spring;
+     if(state==='scatter'){positions[k+1]+=Math.sin(t*.00045+i*.13)*.0017;positions[k]+=Math.cos(t*.00032+i*.09)*.0012}
+   }
+   particles.geometry.attributes.position.needsUpdate=true;
+   group.rotation.y+=(lastHand&&state==='scatter'?lastHand.x*1.7:Math.sin(t*.00022)*.2-group.rotation.y)*.035;
+   group.rotation.x+=(lastHand&&state==='scatter'?lastHand.y*.7:Math.sin(t*.00017)*.08-group.rotation.x)*.025;
+   window.__core.rotation.z=t*.00025;
+   window.__stars.rotation.y=t*.000025;
+   const cards=window.__cards;
+   cards.children.forEach((m,i)=>{
+     const visible=state==='scatter'||state==='photo';const selected=state==='photo'&&i===1;
+     const targetOpacity=state==='photo'?(selected?1:.2):(visible?.65:0);
+     m.material.opacity+=(targetOpacity-m.material.opacity)*.07;
+     m.userData.edge.material.opacity+=(targetOpacity*.8-m.userData.edge.material.opacity)*.07;
+     if(selected){m.position.x+=(0-m.position.x)*.08;m.position.y+=(.15-m.position.y)*.08;m.position.z+=(2.2-m.position.z)*.08;m.scale.lerp(new THREE.Vector3(1.7,1.7,1.7),.08);m.rotation.y*=.92}
+     else {m.position.x+=(m.userData.baseX-m.position.x)*.06;m.position.y+=(-.1+Math.sin(t*.0006+i)*.08-m.position.y)*.03;m.position.z+=(-.7-m.position.z)*.06;m.scale.lerp(new THREE.Vector3(1,1,1),.06)}
+   });
+   if(state==='photo'&&t>photoUntil&&sourceAutoPhoto){sourceAutoPhoto=false;setState('scatter')}
+ }
+ renderer.render(scene,camera);
+}
+let sourceAutoPhoto=false;
+makeScene();requestAnimationFrame(animate);
+window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,1.7))});
+// Basic pinch / open-palm / fist classification using MediaPipe Hands.
+async function startHands(){
+ startBtn.disabled=true;status.textContent='正在启动摄像头…';
+ try{
+  const mp=await import('https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js');
+  const Hands=mp.Hands||window.Hands;
+  if(!Hands)throw new Error('手势识别模块加载失败');
+  hands=new Hands({locateFile:(file)=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+  hands.setOptions({maxNumHands:1,modelComplexity:0,minDetectionConfidence:.55,minTrackingConfidence:.5});
+  hands.onResults(onHands);
+  cameraStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:640},height:{ideal:480}},audio:false});
+  video.srcObject=cameraStream;preview.srcObject=cameraStream;await video.play();await preview.play();preview.style.opacity='.75';
+  handOn=true;status.textContent='摄像头已开启 · 请将手掌置于镜头前';startBtn.textContent='手势识别已开启';
+  const loop=async()=>{if(handOn&&hands){if(video.readyState>=2)await hands.send({image:video});requestAnimationFrame(loop)}};loop();
+ }catch(e){console.error(e);status.textContent='无法启动摄像头：请在 HTTPS 页面打开并允许权限';startBtn.disabled=false;startBtn.textContent='重试开启手势';}
+}
+function onHands(res){
+ if(!res.multiHandLandmarks||!res.multiHandLandmarks.length){lastHand=null;return}
+ const lm=res.multiHandLandmarks[0];
+ // mirrored x aligns gesture movement with the preview
+ const x=1-lm[9].x,y=lm[9].y;lastHand={x:(x-.5)*2,y:(.5-y)*2};
+ const wrist=lm[0], palm=lm[9];
+ const tips=[8,12,16,20], pips=[6,10,14,18];
+ let extended=0;
+ for(let i=0;i<4;i++){const dTip=Math.hypot(lm[tips[i]].x-wrist.x,lm[tips[i]].y-wrist.y);const dPip=Math.hypot(lm[pips[i]].x-wrist.x,lm[pips[i]].y-wrist.y);if(dTip>dPip*1.12)extended++}
+ const pinch=Math.hypot(lm[4].x-lm[8].x,lm[4].y-lm[8].y)<.065;
+ const now=performance.now();
+ if(pinch&&!pinchWas&&now-lastGestureAt>1000){setState('photo','hand');sourceAutoPhoto=true;lastGestureAt=now;lastGesture='pinch'}
+ else if(extended>=4&&!pinch&&state!=='scatter'&&now-lastGestureAt>650){setState('scatter','hand');lastGestureAt=now;lastGesture='open'}
+ else if(extended===0&&!pinch&&state!=='closed'&&now-lastGestureAt>650){setState('closed','hand');lastGestureAt=now;lastGesture='fist'}
+ pinchWas=pinch;
+}
+startBtn.addEventListener('click',startHands);
+</script>
+</body>
+</html>
